@@ -590,89 +590,42 @@ function renderGallery() {
   });
 }
 
-/* LIKE / UNLIKE */
-async function toggleLike(memoryId, button) {
-  if (!user) return toast("Please sign in first.");
+/* RENDER GALLERY */
+function renderGallery() {
+  const q = $("search-input").value.toLowerCase();
 
-  button.disabled = true;
+  const list = memories.filter(m =>
+    (currentCategory === "All" || m.category === currentCategory) &&
+    (`${m.caption} ${m.category} ${m.uploader_name || ""}`.toLowerCase().includes(q))
+  );
 
-  try {
-    const { data: existing, error: findError } = await sb.from("memory_likes")
-      .select("id")
-      .eq("memory_id", memoryId)
-      .eq("user_id", user.id)
-      .maybeSingle();
+  $("gallery-count").textContent = `${list.length} ${list.length === 1 ? "memory" : "memories"}`;
 
-    if (findError) throw findError;
-
-    if (existing) {
-      const { error } = await sb.from("memory_likes")
-        .delete()
-        .eq("memory_id", memoryId)
-        .eq("user_id", user.id);
-
-      if (error) throw error;
-    } else {
-      const { error } = await sb.from("memory_likes")
-        .insert({ memory_id: memoryId, user_id: user.id });
-
-      if (error) throw error;
-    }
-
-    await loadMemoryInteractions();
-    renderGallery();
-  } catch (err) {
-    console.error(err);
-    toast("Like update failed: " + (err.message || "Please try again."));
-    button.disabled = false;
+  if (!list.length) {
+    $("gallery").innerHTML = '<div class="empty-state">No memories here yet. The best ones are still waiting to be shared ✨</div>';
+    return;
   }
+
+  $("gallery").innerHTML = list.map(m => `
+    <article class="memory-card">
+      ${mediaMarkup(m)}
+      <div class="memory-info">
+        <div class="memory-caption" title="${escapeHTML(m.caption)}">
+          ${escapeHTML(m.caption)}
+        </div>
+
+        <div class="memory-meta">
+          <span>${escapeHTML(m.category)} · ${dateFmt(m.memory_date)}</span>
+          <span>${escapeHTML(m.uploader_name || "Batch memory")}</span>
+        </div>
+      </div>
+    </article>
+  `).join("");
+
+  $("gallery").querySelectorAll(".memory-media").forEach((el, i) => {
+    el.onclick = () => openLightbox(list[i]);
+  });
 }
-
-/* ADD COMMENT */
-async function submitComment(e, memoryId) {
-  e.preventDefault();
-
-  const form = e.currentTarget;
-  const input = form.querySelector("input");
-  const comment = input.value.trim();
-
-  if (!comment) return;
-
-  const send = form.querySelector("button");
-  send.disabled = true;
-
-  try {
-    const { error } = await sb.from("memory_comments").insert({
-      memory_id: memoryId,
-      user_id: user.id,
-      comment
-    });
-
-    if (error) throw error;
-
-    await loadMemoryInteractions();
-renderGallery();
-
-const toggle = $("gallery").querySelector(
-  `[data-comments-toggle="${memoryId}"]`
-);
-
-if (toggle) {
-  const area = toggle.closest(".memory-info").querySelector(".comments-area");
-  area.classList.add("is-open");
-  toggle.setAttribute("aria-expanded", "true");
-}
-
-toast("Comment added 💬");
-    // Refresh notification bell for current user
-    await loadNotifications();
-  } catch (err) {
-    console.error(err);
-    toast("Comment failed: " + (err.message || "Please try again."));
-    send.disabled = false;
-  }
-}
-
 /* UPLOAD FILES */
 async function uploadFiles(e) {
   e.preventDefault();
