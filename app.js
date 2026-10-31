@@ -651,9 +651,19 @@ async function submitComment(e, memoryId) {
     if (error) throw error;
 
     await loadMemoryInteractions();
-    renderGallery();
-    toast("Comment added 💬");
+renderGallery();
 
+const toggle = $("gallery").querySelector(
+  `[data-comments-toggle="${memoryId}"]`
+);
+
+if (toggle) {
+  const area = toggle.closest(".memory-info").querySelector(".comments-area");
+  area.classList.add("is-open");
+  toggle.setAttribute("aria-expanded", "true");
+}
+
+toast("Comment added 💬");
     // Refresh notification bell for current user
     await loadNotifications();
   } catch (err) {
