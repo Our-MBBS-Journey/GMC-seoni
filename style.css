@@ -307,3 +307,102 @@
     width: calc(100vw - 20px);
   }
 }
+/* COMPACT LIKE AND COMMENT DESIGN */
+
+.memory-social {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 0;
+  border-top: 1px solid rgba(128,128,128,0.18);
+}
+
+.like-btn,
+.comment-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border: 1px solid rgba(128,128,128,0.22);
+  border-radius: 22px;
+  padding: 8px 13px;
+  background: transparent;
+  color: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s, transform 0.2s;
+}
+
+.like-btn:active,
+.comment-toggle:active {
+  transform: scale(0.96);
+}
+
+.like-btn .social-icon,
+.comment-toggle .social-icon {
+  font-size: 18px;
+}
+
+.like-btn.liked {
+  color: #e04464;
+  background: rgba(224,68,100,0.08);
+  border-color: rgba(224,68,100,0.3);
+}
+
+.comment-toggle:hover {
+  background: rgba(128,128,128,0.10);
+}
+
+/* COMMENTS HIDDEN BY DEFAULT */
+.comments-area {
+  display: none;
+  margin-top: 8px;
+}
+
+.comments-area.is-open {
+  display: block;
+}
+
+.comments-list {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  max-height: 260px;
+  overflow-y: auto;
+  padding: 8px 2px;
+}
+
+.memory-comment {
+  padding: 9px 11px;
+  border-radius: 10px;
+  background: rgba(128,128,128,0.09);
+}
+
+.memory-comment p {
+  margin: 4px 0 0;
+  overflow-wrap: anywhere;
+}
+
+.comment-form {
+  display: flex;
+  gap: 8px;
+  margin-top: 9px;
+}
+
+.comment-form input {
+  min-width: 0;
+  flex: 1;
+}
+
+@media (max-width: 480px) {
+  .memory-social {
+    gap: 8px;
+  }
+
+  .like-btn,
+  .comment-toggle {
+    padding: 7px 11px;
+    font-size: 13px;
+  }
+}
