@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#101827"><title>Our MBBS Journey</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="bg-glow"></div>
+<header class="topbar">
+  <a class="brand" href="#"><span class="brand-mark">✦</span><span>Our MBBS <b>Journey</b></span></a>
+  <div class="top-actions"><span id="user-label" class="user-label"></span><button id="logout-btn" class="btn btn-ghost hidden">Log out</button></div>
+</header>
+<main>
+<section id="auth-view" class="auth-layout">
+  <div class="hero-copy"><div class="eyebrow">GMC SEONI · BATCH 2026</div><h1>Five years.<br><span>One unforgettable journey.</span></h1>
+  <p>A private home for our memories—classrooms, hostel nights, trips, celebrations, and the people who made it special.</p>
+  <div class="hero-stats"><div><strong>05</strong><small>Years together</small></div><div><strong>∞</strong><small>Memories</small></div><div><strong>♥</strong><small>Our people</small></div></div></div>
+  <div class="auth-card"><div class="auth-tabs"><button class="tab active" data-tab="login">Sign in</button><button class="tab" data-tab="signup">Create account</button></div>
+  <form id="auth-form"><label>Email address<input id="auth-email" type="email" required placeholder="you@example.com"></label><label>Password<input id="auth-password" type="password" minlength="6" required placeholder="At least 6 characters"></label><div id="signup-extra" class="hidden"><label>Your name<input id="auth-name" type="text" placeholder="Full name"></label></div><button class="btn btn-primary full" id="auth-submit">Sign in</button><p id="auth-message" class="message"></p></form>
+  <p class="small-note">Access is limited to our invited friends. New accounts may need admin approval.</p></div>
+</section>
+
+<section id="app-view" class="hidden">
+  <div class="welcome-row"><div><div class="eyebrow">OUR PRIVATE MEMORY SPACE</div><h1>Remember the little things<span class="dot">.</span></h1><p class="muted">Every photo tells a part of our story.</p></div><button id="open-upload" class="btn btn-primary">＋ Share a memory</button></div>
+  <div id="notice" class="notice hidden"></div>
+  <nav class="category-nav" id="category-nav">
+    <button class="category active" data-category="All">All memories</button>
+    <button class="category" data-category="Year 1">Year 1</button><button class="category" data-category="Year 2">Year 2</button>
+    <button class="category" data-category="Year 3">Year 3</button><button class="category" data-category="Year 4">Year 4</button>
+    <button class="category" data-category="Year 5">Year 5</button><button class="category" data-category="Hostel">Hostel</button>
+    <button class="category" data-category="College">College</button><button class="category" data-category="Trips">Trips</button>
+  </nav>
+  <div class="gallery-tools"><div><span id="gallery-count">0 memories</span><span class="tiny-separator">·</span><span class="muted">Shared with our circle</span></div><input id="search-input" type="search" placeholder="Search memories…"></div>
+  <div id="gallery" class="gallery-grid"><div class="empty-state">Loading memories…</div></div>
+  <section id="admin-panel" class="admin-panel hidden"><div class="section-heading"><div><div class="eyebrow">ADMIN CONTROL</div><h2>Community & approvals</h2></div><span class="admin-chip">Administrator</span></div>
+    <div class="admin-tabs"><button class="admin-tab active" data-admin-tab="pending">Pending uploads <span id="pending-count">0</span></button><button class="admin-tab" data-admin-tab="members">Members</button></div>
+    <div id="admin-content"></div>
+  </section>
+</section>
+</main>
+<div id="upload-modal" class="modal hidden"><div class="modal-card"><button class="modal-close" id="close-upload">×</button><div class="eyebrow">ADD TO OUR STORY</div><h2>Share a memory</h2><p class="muted">Your upload stays private and is published only after admin approval.</p>
+<form id="upload-form"><label>Caption<input id="upload-caption" maxlength="140" placeholder="A moment worth remembering…" required></label><div class="form-row"><label>Memory collection<select id="upload-category" required><option>Year 1</option><option>Year 2</option><option>Year 3</option><option>Year 4</option><option>Year 5</option><option>Hostel</option><option>College</option><option>Trips</option></select></label><label>Memory date<input id="upload-date" type="date"></label></div><label class="file-drop"> <span class="upload-icon">↑</span><b>Choose photos or videos</b><small>Images and videos · max 50 MB each</small><input id="upload-files" type="file" accept="image/*,video/*" multiple required></label><div id="upload-progress" class="message"></div><button class="btn btn-primary full" type="submit">Submit for approval</button></form></div></div>
+<div id="lightbox" class="lightbox hidden"><button id="lightbox-close">×</button><div id="lightbox-content"></div><div id="lightbox-caption"></div></div>
+<div id="toast" class="toast"></div>
+<footer><span>Made with ♥ by our batch</span><span>GMC Seoni · 2026</span></footer>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script><script src="config.js"></script><script src="app.js"></script>
+</body></html>
