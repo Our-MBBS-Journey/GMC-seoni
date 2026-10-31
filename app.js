@@ -730,6 +730,146 @@ async function uploadFiles(e) {
     submit.disabled = false;
   }
 }
+/* LIKE / UNLIKE */
+async function toggleLike(memoryId, button) {
+  if (!user) return toast("Please sign in first.");
+
+  button.disabled = true;
+
+  try {
+    const { data: existing, error: findError } = await sb.from("memory_likes")
+      .select("id")
+      .eq("memory_id", memoryId)
+      .eq("user_id", user.id)
+      .maybeSingle();
+
+    if (findError) throw findError;
+
+    if (existing) {
+      const { error } = await sb.from("memory_likes")
+        .delete()
+        .eq("memory_id", memoryId)
+        .eq("user_id", user.id);
+
+      if (error) throw error;
+    } else {
+      const { error } = await sb.from("memory_likes")
+        .insert({ memory_id: memoryId, user_id: user.id });
+
+      if (error) throw error;
+    }
+
+    await loadMemoryInteractions();
+    renderGallery();
+  } catch (err) {
+    console.error(err);
+    toast("Like update failed: " + (err.message || "Please try again."));
+    button.disabled = false;
+  }
+}
+
+/* ADD COMMENT */
+async function submitComment(e, memoryId) {
+  e.preventDefault();
+
+  const form = e.currentTarget;
+  const input = form.querySelector("input");
+  const comment = input.value.trim();
+
+  if (!comment) return;
+
+  const send = form.querySelector("button");
+  send.disabled = true;
+
+  try {
+    const { error } = await sb.from("memory_comments").insert({
+      memory_id: memoryId,
+      user_id: user.id,
+      comment
+    });
+
+    if (error) throw error;
+
+    await loadMemoryInteractions();
+    renderGallery();
+    toast("Comment added 💬");
+
+    // Refresh notification bell for current user
+    await loadNotifications();
+  } catch (err) {
+    console.error(err);
+    toast("Comment failed: " + (err.message || "Please try again."));
+    send.disabled = false;
+  }
+}
+
+/* UPLOAD FILES */
+async function uploadFiles(e) {
+  e.preventDefault();
+
+  if (!profile?.can_upload) {
+    return toast("Upload permission is not enabled for your account.");
+  }
+
+  const files = $("upload-files").files;
+  if (!files.length) return;
+
+  const caption = $("upload-caption").value.trim();
+  const category = $("upload-category").value;
+  const date = $("upload-date").value || null;
+
+  $("upload-progress").textContent = "Uploading… please keep this page open.";
+
+  const submit = $("upload-form").querySelector("button[type=submit]");
+  submit.disabled = true;
+
+  try {
+    for (const f of files) {
+      if (f.size > 50 * 1024 * 1024) {
+        throw new Error(`${f.name} exceeds 50 MB.`);
+      }
+
+      if (!f.type.startsWith("image/") && !f.type.startsWith("video/")) {
+        throw new Error("Only image/video files are allowed.");
+      }
+
+      const path = `${user.id}/${Date.now()}-${f.name.replace(/[^\w.\-]/g, "_")}`;
+
+      const { error: upErr } = await sb.storage.from("journey-media")
+        .upload(path, f, { upsert: false });
+
+      if (upErr) throw upErr;
+
+      const { data: { publicUrl } } = sb.storage.from("journey-media").getPublicUrl(path);
+
+      const { error: dbErr } = await sb.from("memories").insert({
+        caption,
+        category,
+        memory_date: date,
+        storage_path: path,
+        public_url: publicUrl,
+        media_type: f.type.startsWith("video/") ? "video" : "image",
+        status: "pending",
+        uploader_id: user.id,
+        uploader_name: profile.full_name || user.email
+      });
+
+      if (dbErr) throw dbErr;
+    }
+
+    $("upload-progress").textContent = "Submitted! Your memory is awaiting admin approval.";
+    toast("Sent for approval ✨");
+    $("upload-form").reset();
+    show($("upload-modal"), false);
+
+    if (profile.is_admin) await loadAdmin();
+
+  } catch (err) {
+    $("upload-progress").textContent = err.message || "Upload failed. Check Storage setup.";
+  } finally {
+    submit.disabled = false;
+  }
+}
 
 /* ADMIN DASHBOARD */
 async function loadAdmin() {
