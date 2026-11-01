@@ -503,3 +503,61 @@
     border-radius: 18px;
   }
 }
+/* ===== GROUP PHOTO BANNER ===== */
+
+.group-photo-banner {
+  width: 100%;
+  max-width: 700px;
+  margin: 0 auto 28px;
+  border: 1px solid rgba(213, 173, 105, 0.35);
+  border-radius: 20px;
+  overflow: hidden;
+  background: linear-gradient(135deg, #252333, #10131D, #33291D);
+  box-shadow: 0 12px 35px rgba(0, 0, 0, 0.3);
+}
+
+.banner-placeholder {
+  min-height: 190px;
+  padding: 30px 20px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
+
+.banner-icon {
+  font-size: 38px;
+  margin-bottom: 10px;
+}
+
+.banner-placeholder h2 {
+  color: #D5AD69;
+  font-size: 25px;
+  font-weight: 800;
+  margin: 5px 0;
+}
+
+.banner-placeholder p {
+  color: #F5E8CE;
+  font-size: 13px;
+  margin: 8px 0 15px;
+}
+
+.banner-year {
+  color: #D5AD69;
+  font-size: 11px;
+  letter-spacing: 2px;
+  font-weight: 700;
+}
+
+@media (max-width: 600px) {
+  .banner-placeholder {
+    min-height: 160px;
+    padding: 22px 12px;
+  }
+
+  .banner-placeholder h2 {
+    font-size: 21px;
+  }
+}
