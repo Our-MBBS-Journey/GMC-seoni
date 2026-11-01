@@ -9,6 +9,7 @@ let user = null, profile = null, currentCategory = "All", adminTab = "pending";
 let memories = [], allProfiles = [], allFriends = [];
 let notifications = [];
 let notificationChannel = null;
+let friendsSlideTimer = null;
 
 const show = (el, yes = true) => el.classList.toggle("hidden", !yes);
 
@@ -313,12 +314,22 @@ async function boot() {
 
   if (session) await enterApp(session.user);
 
-  sb.auth.onAuthStateChange(async (_event, session) => {
+  sb.auth.onAuthStateChange(async (event, session) => {
+    // getSession() above already handled the current session. Supabase emits
+    // INITIAL_SESSION when this listener is attached; skipping it prevents
+    // the same dashboard data from being loaded twice during startup.
+    if (event === "INITIAL_SESSION") return;
+
     if (session) {
       await enterApp(session.user);
     } else {
       user = null;
       profile = null;
+
+      if (friendsSlideTimer) {
+        clearInterval(friendsSlideTimer);
+        friendsSlideTimer = null;
+      }
 
       if (notificationChannel) {
         await sb.removeChannel(notificationChannel);
@@ -338,6 +349,7 @@ async function enterApp(u) {
   show($("auth-view"), false);
   show($("app-view"));
   show($("logout-btn"));
+  notice("Loading your private memories...");
 
   const { data: p, error } = await sb.from("profiles")
     .select("*")
@@ -366,13 +378,17 @@ async function enterApp(u) {
   show($("admin-panel"), p.is_admin);
 
   setupNotificationUI();
-  await loadNotifications();
   startNotificationRealtime();
 
-  await loadMemories();
-  await loadVisibleFriends();
-
-  if (p.is_admin) await loadAdmin();
+  // These reads are independent, so run them together instead of waiting
+  // for each network request to finish one by one.
+  const initialLoads = [
+    loadNotifications(),
+    loadMemories(),
+    loadVisibleFriends()
+  ];
+  if (p.is_admin) initialLoads.push(loadAdmin());
+  await Promise.allSettled(initialLoads);
 }
 
 /* LOAD APPROVED MEMORIES ONLY */
@@ -492,9 +508,10 @@ async function uploadFiles(e) {
 }
 /* ADMIN DASHBOARD */
 async function loadAdmin() {
-  await loadPending();
-  await loadMembers();
-  if (adminTab === "friends") await loadFriendsAdmin();
+  // Admin sections use separate tables, so fetch them concurrently.
+  const adminLoads = [loadPending(), loadMembers()];
+  if (adminTab === "friends") adminLoads.push(loadFriendsAdmin());
+  await Promise.allSettled(adminLoads);
 }
 
 document.querySelectorAll("[data-admin-tab]").forEach(b => b.onclick = async () => {
@@ -639,6 +656,12 @@ async function loadVisibleFriends() {
   const slider = document.querySelector(".friends-slider");
   if (!slider || !user || !profile?.is_approved) return;
 
+  // Stop any previous slideshow before loading the latest approved friends.
+  if (friendsSlideTimer) {
+    clearInterval(friendsSlideTimer);
+    friendsSlideTimer = null;
+  }
+
   const { data, error } = await sb.from("friends")
     .select("id,name,place,dob,photo_url,is_visible")
     .eq("is_visible", true)
@@ -659,6 +682,35 @@ async function loadVisibleFriends() {
       <small>DOB: ${dateFmt(f.dob)}</small>
     </article>
   `).join("") : '<div class="empty-state">Approved friends will appear here ❤️</div>';
+
+  // Automatically show one approved friend at a time, changing every 3 seconds.
+  const cards = Array.from(slider.querySelectorAll(".friend-card"));
+  if (!cards.length) return;
+
+  let activeIndex = 0;
+  slider.setAttribute("aria-live", "polite");
+
+  const showFriendSlide = index => {
+    cards.forEach((card, i) => {
+      const isActive = i === index;
+      card.hidden = !isActive;
+      card.setAttribute("aria-hidden", String(!isActive));
+      if (isActive && typeof card.animate === "function") {
+        card.animate(
+          [{ opacity: 0.35, transform: "translateY(6px)" }, { opacity: 1, transform: "translateY(0)" }],
+          { duration: 650, easing: "ease-out" }
+        );
+      }
+    });
+  };
+
+  showFriendSlide(activeIndex);
+  if (cards.length > 1) {
+    friendsSlideTimer = setInterval(() => {
+      activeIndex = (activeIndex + 1) % cards.length;
+      showFriendSlide(activeIndex);
+    }, 3000);
+  }
 }
 
 async function loadFriendsAdmin() {
