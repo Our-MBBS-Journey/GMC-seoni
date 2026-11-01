@@ -651,15 +651,48 @@ function renderAdminTab() {
 }
 
 
-/* FRIENDS MANAGEMENT + APPROVED SLIDESHOW */
+/* FRIENDS MANAGEMENT + APPROVED HORIZONTAL AUTO-SLIDER */
 async function loadVisibleFriends() {
   const slider = document.querySelector(".friends-slider");
   if (!slider || !user || !profile?.is_approved) return;
 
-  // Stop any previous slideshow before loading the latest approved friends.
+  // Stop the previous auto-scroll before refreshing the approved friends list.
   if (friendsSlideTimer) {
     clearInterval(friendsSlideTimer);
     friendsSlideTimer = null;
+  }
+
+  // Add slider styling from JS so no separate CSS-file change is required.
+  if (!document.getElementById("friends-horizontal-slider-style")) {
+    const style = document.createElement("style");
+    style.id = "friends-horizontal-slider-style";
+    style.textContent = `
+      .friends-slider {
+        display: flex !important;
+        flex-direction: row !important;
+        flex-wrap: nowrap !important;
+        gap: 14px !important;
+        overflow-x: auto !important;
+        overflow-y: hidden !important;
+        scroll-behavior: smooth !important;
+        scroll-snap-type: x mandatory;
+        -webkit-overflow-scrolling: touch;
+        scrollbar-width: none;
+        padding: 6px 2px 14px;
+        touch-action: pan-x pan-y;
+      }
+      .friends-slider::-webkit-scrollbar { display: none; }
+      .friends-slider .friend-card {
+        display: block !important;
+        flex: 0 0 clamp(210px, 78%, 270px) !important;
+        min-width: 0;
+        scroll-snap-align: start;
+      }
+      @media (min-width: 700px) {
+        .friends-slider .friend-card { flex-basis: 240px !important; }
+      }
+    `;
+    document.head.appendChild(style);
   }
 
   const { data, error } = await sb.from("friends")
@@ -668,8 +701,8 @@ async function loadVisibleFriends() {
     .order("created_at", { ascending: false });
 
   if (error) {
-    console.warn("Friends slideshow could not load:", error);
-    slider.innerHTML = '<div class="empty-state">Friends slideshow could not be loaded.</div>';
+    console.warn("Friends slider could not load:", error);
+    slider.innerHTML = '<div class="empty-state">Friends could not be loaded.</div>';
     return;
   }
 
@@ -683,34 +716,38 @@ async function loadVisibleFriends() {
     </article>
   `).join("") : '<div class="empty-state">Approved friends will appear here ❤️</div>';
 
-  // Automatically show one approved friend at a time, changing every 3 seconds.
+  // Keep every approved friend's card visible in one horizontal row.
+  // On phones, the row glides sideways automatically; users can also swipe it.
   const cards = Array.from(slider.querySelectorAll(".friend-card"));
-  if (!cards.length) return;
+  slider.scrollLeft = 0;
+  if (cards.length < 2) return;
 
-  let activeIndex = 0;
-  slider.setAttribute("aria-live", "polite");
-
-  const showFriendSlide = index => {
-    cards.forEach((card, i) => {
-      const isActive = i === index;
-      card.hidden = !isActive;
-      card.setAttribute("aria-hidden", String(!isActive));
-      if (isActive && typeof card.animate === "function") {
-        card.animate(
-          [{ opacity: 0.35, transform: "translateY(6px)" }, { opacity: 1, transform: "translateY(0)" }],
-          { duration: 650, easing: "ease-out" }
-        );
-      }
-    });
+  const startAutoScroll = () => {
+    if (friendsSlideTimer) clearInterval(friendsSlideTimer);
+    friendsSlideTimer = setInterval(() => {
+      const firstCard = slider.querySelector(".friend-card");
+      if (!firstCard) return;
+      const styles = window.getComputedStyle(slider);
+      const gap = parseFloat(styles.columnGap || styles.gap) || 14;
+      const step = firstCard.getBoundingClientRect().width + gap;
+      const atEnd = slider.scrollLeft + slider.clientWidth >= slider.scrollWidth - 8;
+      slider.scrollTo({ left: atEnd ? 0 : slider.scrollLeft + step, behavior: "smooth" });
+    }, 2800);
   };
 
-  showFriendSlide(activeIndex);
-  if (cards.length > 1) {
-    friendsSlideTimer = setInterval(() => {
-      activeIndex = (activeIndex + 1) % cards.length;
-      showFriendSlide(activeIndex);
-    }, 3000);
+  // Pause while a person is swiping, then resume when they release the slider.
+  if (slider.dataset.autoScrollEvents !== "ready") {
+    slider.addEventListener("pointerdown", () => {
+      if (friendsSlideTimer) {
+        clearInterval(friendsSlideTimer);
+        friendsSlideTimer = null;
+      }
+    });
+    slider.addEventListener("pointerup", startAutoScroll);
+    slider.addEventListener("pointercancel", startAutoScroll);
+    slider.dataset.autoScrollEvents = "ready";
   }
+  startAutoScroll();
 }
 
 async function loadFriendsAdmin() {
