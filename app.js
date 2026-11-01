@@ -6,8 +6,7 @@ const sb = configured ? createClient(cfg.SUPABASE_URL, cfg.SUPABASE_ANON_KEY) : 
 const $ = id => document.getElementById(id);
 
 let user = null, profile = null, currentCategory = "All", adminTab = "pending";
-let memories = [], allProfiles = [];
-let likesByMemory = {}, commentsByMemory = {};
+let memories = [], allProfiles = [], allFriends = [];
 let notifications = [];
 let notificationChannel = null;
 
@@ -102,10 +101,9 @@ function setupNotificationUI() {
   });
 }
 
-/* LOAD NOTIFICATIONS */
+/* LOAD NOTIFICATIONS — independent of likes/comments */
 async function loadNotifications() {
   if (!user) return;
-
   const list = $("notification-list");
   if (!list) return;
 
@@ -122,10 +120,8 @@ async function loadNotifications() {
   }
 
   notifications = data || [];
-
   const unread = notifications.filter(n => !n.is_read).length;
   const badge = $("notification-badge");
-
   badge.textContent = unread > 99 ? "99+" : unread;
   show(badge, unread > 0);
 
@@ -134,72 +130,13 @@ async function loadNotifications() {
     return;
   }
 
-  const actorIds = [...new Set(notifications.map(n => n.actor_id))];
-  const memoryIds = [...new Set(notifications.map(n => n.memory_id))];
-  const commentIds = [...new Set(notifications.filter(n => n.comment_id).map(n => n.comment_id))];
-
-  let names = {};
-  let captions = {};
-  let commentTexts = {};
-
-  if (actorIds.length) {
-    const { data: people, error: peopleError } = await sb.from("profiles")
-      .select("id,full_name")
-      .in("id", actorIds);
-
-    if (peopleError) console.warn("Notification names:", peopleError);
-
-    (people || []).forEach(p => {
-      names[p.id] = p.full_name || "Member";
-    });
-  }
-
-  if (memoryIds.length) {
-    const { data: memoryData, error: memoryError } = await sb.from("memories")
-      .select("id,caption")
-      .in("id", memoryIds);
-
-    if (memoryError) console.warn("Notification memories:", memoryError);
-
-    (memoryData || []).forEach(m => {
-      captions[m.id] = m.caption || "Memory";
-    });
-  }
-
-  if (commentIds.length) {
-    const { data: commentData, error: commentError } = await sb.from("memory_comments")
-      .select("id,comment")
-      .in("id", commentIds);
-
-    if (commentError) console.warn("Notification comments:", commentError);
-
-    (commentData || []).forEach(c => {
-      commentTexts[c.id] = c.comment || "";
-    });
-  }
-
-  list.innerHTML = notifications.map(n => {
-    const actor = names[n.actor_id] || "A member";
-    const memory = captions[n.memory_id] || "a memory";
-    const comment = commentTexts[n.comment_id] || "";
-
-    const message = n.type === "like"
-      ? `<b>${escapeHTML(actor)}</b> liked your memory <b>${escapeHTML(memory)}</b>`
-      : `<b>${escapeHTML(actor)}</b> commented on <b>${escapeHTML(memory)}</b>${comment ? `<p class="notification-comment">${escapeHTML(comment)}</p>` : ""}`;
-
-    const time = new Date(n.created_at).toLocaleString();
-
-    return `
-      <div class="notification-item ${n.is_read ? "" : "unread"}"
-           data-notification-id="${n.id}">
-        <div class="notification-message">
-          ${n.type === "like" ? "❤️" : "💬"} ${message}
-        </div>
-        <small>${escapeHTML(time)}</small>
-        ${n.is_read ? "" : '<span class="notification-unread-label">New</span>'}
-      </div>
-    `;
-  }).join("");
+  list.innerHTML = notifications.map(n => `
+    <div class="notification-item ${n.is_read ? "" : "unread"}" data-notification-id="${n.id}">
+      <div class="notification-message">🔔 ${escapeHTML(n.message || "You have a new update in Our MBBS Journey.")}</div>
+      <small>${escapeHTML(new Date(n.created_at).toLocaleString())}</small>
+      ${n.is_read ? "" : '<span class="notification-unread-label">New</span>'}
+    </div>
+  `).join("");
 }
 
 /* MARK ONE NOTIFICATION READ */
@@ -433,11 +370,12 @@ async function enterApp(u) {
   startNotificationRealtime();
 
   await loadMemories();
+  await loadVisibleFriends();
 
   if (p.is_admin) await loadAdmin();
 }
 
-/* LOAD APPROVED MEMORIES */
+/* LOAD APPROVED MEMORIES ONLY */
 async function loadMemories() {
   const { data, error } = await sb.from("memories")
     .select("*")
@@ -449,160 +387,21 @@ async function loadMemories() {
     notice("Could not load gallery: " + error.message);
     return;
   }
-
   memories = data || [];
-  await loadMemoryInteractions();
   renderGallery();
 }
 
-/* LOAD LIKES AND COMMENTS FOR GALLERY */
-async function loadMemoryInteractions() {
-  likesByMemory = {};
-  commentsByMemory = {};
-
-  const ids = memories.map(m => m.id);
-  if (!ids.length) return;
-
-  const [likesResult, commentsResult] = await Promise.all([
-    sb.from("memory_likes")
-      .select("memory_id,user_id")
-      .in("memory_id", ids),
-
-    sb.from("memory_comments")
-      .select("id,memory_id,user_id,comment,created_at")
-      .in("memory_id", ids)
-      .order("created_at", { ascending: true })
-  ]);
-
-  if (likesResult.error) console.error("Likes load error:", likesResult.error);
-  if (commentsResult.error) console.error("Comments load error:", commentsResult.error);
-
-  (likesResult.data || []).forEach(like => {
-    if (!likesByMemory[like.memory_id]) {
-      likesByMemory[like.memory_id] = { count: 0, mine: false };
-    }
-
-    likesByMemory[like.memory_id].count++;
-
-    if (like.user_id === user.id) {
-      likesByMemory[like.memory_id].mine = true;
-    }
-  });
-
-  const comments = commentsResult.data || [];
-  const commenterIds = [...new Set(comments.map(c => c.user_id))];
-
-  let names = {};
-
-  if (commenterIds.length) {
-    const { data: people, error: peopleError } = await sb.from("profiles")
-      .select("id,full_name")
-      .in("id", commenterIds);
-
-    if (peopleError) console.warn("Comment names could not be loaded:", peopleError);
-
-    (people || []).forEach(p => {
-      names[p.id] = p.full_name || "Member";
-    });
-  }
-
-  comments.forEach(c => {
-    if (!commentsByMemory[c.memory_id]) commentsByMemory[c.memory_id] = [];
-
-    commentsByMemory[c.memory_id].push({
-      ...c,
-      displayName: names[c.user_id] || (c.user_id === user.id ? (profile?.full_name || "You") : "Member")
-    });
-  });
-}
-
-/* RENDER GALLERY WITH LIKE AND COMMENT */
+/* GALLERY — photos/videos only; no like or comment controls */
 function renderGallery() {
-  const q = $("search-input").value.toLowerCase();
-
+  const q = ($("search-input")?.value || "").toLowerCase();
   const list = memories.filter(m =>
     (currentCategory === "All" || m.category === currentCategory) &&
-    (`${m.caption} ${m.category} ${m.uploader_name || ""}`.toLowerCase().includes(q))
+    (`${m.caption || ""} ${m.category || ""} ${m.uploader_name || ""}`.toLowerCase().includes(q))
   );
 
   $("gallery-count").textContent = `${list.length} ${list.length === 1 ? "memory" : "memories"}`;
-
   if (!list.length) {
-    $("gallery").innerHTML = '<div class="empty-state">No memories here yet. The best ones are still waiting to be shared ✨</div>';
-    return;
-  }
-
-  $("gallery").innerHTML = list.map(m => {
-    const likeInfo = likesByMemory[m.id] || { count: 0, mine: false };
-    const comments = commentsByMemory[m.id] || [];
-
-    const commentHTML = comments.length
-      ? comments.map(c => `
-          <div class="memory-comment">
-            <strong>${escapeHTML(c.displayName)}</strong>
-            <p>${escapeHTML(c.comment)}</p>
-          </div>
-        `).join("")
-      : '<div class="no-comments">No comments yet. Start the conversation!</div>';
-
-    return `
-      <article class="memory-card">
-        ${mediaMarkup(m)}
-        <div class="memory-info">
-          <div class="memory-caption" title="${escapeHTML(m.caption)}">${escapeHTML(m.caption)}</div>
-
-          <div class="memory-meta">
-            <span>${escapeHTML(m.category)} · ${dateFmt(m.memory_date)}</span>
-            <span>${escapeHTML(m.uploader_name || "Batch memory")}</span>
-          </div>
-
-          <div class="memory-social">
-            <button type="button" class="like-btn ${likeInfo.mine ? "liked" : ""}" data-like="${m.id}">
-              ${likeInfo.mine ? "❤️ Liked" : "🤍 Like"}
-              <span>${likeInfo.count}</span>
-            </button>
-            <span class="comment-total">💬 ${comments.length} comments</span>
-          </div>
-
-          <div class="comments-area">
-            <div class="comments-list">${commentHTML}</div>
-
-            <form class="comment-form" data-comment-form="${m.id}">
-              <input type="text" maxlength="1000" required placeholder="Write a comment…" aria-label="Write a comment">
-              <button type="submit" class="comment-send">Send</button>
-            </form>
-          </div>
-        </div>
-      </article>
-    `;
-  }).join("");
-
-  $("gallery").querySelectorAll(".memory-media").forEach((el, i) => {
-    el.onclick = () => openLightbox(list[i]);
-  });
-
-  $("gallery").querySelectorAll("[data-like]").forEach(btn => {
-    btn.onclick = () => toggleLike(btn.dataset.like, btn);
-  });
-
-  $("gallery").querySelectorAll("[data-comment-form]").forEach(form => {
-    form.onsubmit = e => submitComment(e, form.dataset.commentForm);
-  });
-}
-
-/* RENDER GALLERY */
-function renderGallery() {
-  const q = $("search-input").value.toLowerCase();
-
-  const list = memories.filter(m =>
-    (currentCategory === "All" || m.category === currentCategory) &&
-    (`${m.caption} ${m.category} ${m.uploader_name || ""}`.toLowerCase().includes(q))
-  );
-
-  $("gallery-count").textContent = `${list.length} ${list.length === 1 ? "memory" : "memories"}`;
-
-  if (!list.length) {
-    $("gallery").innerHTML = '<div class="empty-state">No memories here yet. The best ones are still waiting to be shared ✨</div>';
+    $("gallery").innerHTML = '<div class="empty-state">No approved memories here yet. The best ones are still waiting to be shared ✨</div>';
     return;
   }
 
@@ -610,12 +409,9 @@ function renderGallery() {
     <article class="memory-card">
       ${mediaMarkup(m)}
       <div class="memory-info">
-        <div class="memory-caption" title="${escapeHTML(m.caption)}">
-          ${escapeHTML(m.caption)}
-        </div>
-
+        <div class="memory-caption" title="${escapeHTML(m.caption || "")}">${escapeHTML(m.caption || "Untitled memory")}</div>
         <div class="memory-meta">
-          <span>${escapeHTML(m.category)} · ${dateFmt(m.memory_date)}</span>
+          <span>${escapeHTML(m.category || "Memory")} · ${dateFmt(m.memory_date)}</span>
           <span>${escapeHTML(m.uploader_name || "Batch memory")}</span>
         </div>
       </div>
@@ -626,145 +422,6 @@ function renderGallery() {
     el.onclick = () => openLightbox(list[i]);
   });
 }
-/* UPLOAD FILES */
-async function uploadFiles(e) {
-  e.preventDefault();
-
-  if (!profile?.can_upload) {
-    return toast("Upload permission is not enabled for your account.");
-  }
-
-  const files = $("upload-files").files;
-  if (!files.length) return;
-
-  const caption = $("upload-caption").value.trim();
-  const category = $("upload-category").value;
-  const date = $("upload-date").value || null;
-
-  $("upload-progress").textContent = "Uploading… please keep this page open.";
-
-  const submit = $("upload-form").querySelector("button[type=submit]");
-  submit.disabled = true;
-
-  try {
-    for (const f of files) {
-      if (f.size > 50 * 1024 * 1024) {
-        throw new Error(`${f.name} exceeds 50 MB.`);
-      }
-
-      if (!f.type.startsWith("image/") && !f.type.startsWith("video/")) {
-        throw new Error("Only image/video files are allowed.");
-      }
-
-      const path = `${user.id}/${Date.now()}-${f.name.replace(/[^\w.\-]/g, "_")}`;
-
-      const { error: upErr } = await sb.storage.from("journey-media")
-        .upload(path, f, { upsert: false });
-
-      if (upErr) throw upErr;
-
-      const { data: { publicUrl } } = sb.storage.from("journey-media").getPublicUrl(path);
-
-      const { error: dbErr } = await sb.from("memories").insert({
-        caption,
-        category,
-        memory_date: date,
-        storage_path: path,
-        public_url: publicUrl,
-        media_type: f.type.startsWith("video/") ? "video" : "image",
-        status: "pending",
-        uploader_id: user.id,
-        uploader_name: profile.full_name || user.email
-      });
-
-      if (dbErr) throw dbErr;
-    }
-
-    $("upload-progress").textContent = "Submitted! Your memory is awaiting admin approval.";
-    toast("Sent for approval ✨");
-    $("upload-form").reset();
-    show($("upload-modal"), false);
-
-    if (profile.is_admin) await loadAdmin();
-
-  } catch (err) {
-    $("upload-progress").textContent = err.message || "Upload failed. Check Storage setup.";
-  } finally {
-    submit.disabled = false;
-  }
-}
-/* LIKE / UNLIKE */
-async function toggleLike(memoryId, button) {
-  if (!user) return toast("Please sign in first.");
-
-  button.disabled = true;
-
-  try {
-    const { data: existing, error: findError } = await sb.from("memory_likes")
-      .select("id")
-      .eq("memory_id", memoryId)
-      .eq("user_id", user.id)
-      .maybeSingle();
-
-    if (findError) throw findError;
-
-    if (existing) {
-      const { error } = await sb.from("memory_likes")
-        .delete()
-        .eq("memory_id", memoryId)
-        .eq("user_id", user.id);
-
-      if (error) throw error;
-    } else {
-      const { error } = await sb.from("memory_likes")
-        .insert({ memory_id: memoryId, user_id: user.id });
-
-      if (error) throw error;
-    }
-
-    await loadMemoryInteractions();
-    renderGallery();
-  } catch (err) {
-    console.error(err);
-    toast("Like update failed: " + (err.message || "Please try again."));
-    button.disabled = false;
-  }
-}
-
-/* ADD COMMENT */
-async function submitComment(e, memoryId) {
-  e.preventDefault();
-
-  const form = e.currentTarget;
-  const input = form.querySelector("input");
-  const comment = input.value.trim();
-
-  if (!comment) return;
-
-  const send = form.querySelector("button");
-  send.disabled = true;
-
-  try {
-    const { error } = await sb.from("memory_comments").insert({
-      memory_id: memoryId,
-      user_id: user.id,
-      comment
-    });
-
-    if (error) throw error;
-
-    await loadMemoryInteractions();
-    renderGallery();
-    toast("Comment added 💬");
-
-    // Refresh notification bell for current user
-    await loadNotifications();
-  } catch (err) {
-    console.error(err);
-    toast("Comment failed: " + (err.message || "Please try again."));
-    send.disabled = false;
-  }
-}
 
 /* UPLOAD FILES */
 async function uploadFiles(e) {
@@ -833,21 +490,22 @@ async function uploadFiles(e) {
     submit.disabled = false;
   }
 }
-
 /* ADMIN DASHBOARD */
 async function loadAdmin() {
   await loadPending();
   await loadMembers();
+  if (adminTab === "friends") await loadFriendsAdmin();
 }
 
-document.querySelectorAll("[data-admin-tab]").forEach(b => b.onclick = () => {
+document.querySelectorAll("[data-admin-tab]").forEach(b => b.onclick = async () => {
   adminTab = b.dataset.adminTab;
 
   document.querySelectorAll(".admin-tab").forEach(x =>
     x.classList.toggle("active", x === b)
   );
 
-  renderAdminTab();
+  if (adminTab === "friends") await loadFriendsAdmin();
+  else renderAdminTab();
 });
 
 async function loadPending() {
@@ -898,6 +556,43 @@ function renderAdminTab() {
       </div>
     `).join("") : '<div class="empty-state">All caught up! No pending uploads.</div>';
 
+  } else if (adminTab === "friends") {
+    root.innerHTML = `
+      <div class="friends-admin">
+        <h3>Add a friend to the slideshow</h3>
+        <form id="friend-form" class="friend-admin-form">
+          <label>Friend's name<input id="friend-name" type="text" maxlength="100" required placeholder="Full name"></label>
+          <label>Place<input id="friend-place" type="text" maxlength="150" placeholder="City / hometown"></label>
+          <label>Date of birth<input id="friend-dob" type="date"></label>
+          <label>Profile photo<input id="friend-photo" type="file" accept="image/*" required></label>
+          <button class="btn btn-primary" type="submit">Add friend</button>
+          <p id="friend-message" class="message"></p>
+        </form>
+        <h3>Friends profiles</h3>
+        <div id="friends-admin-list">
+          ${allFriends.length ? allFriends.map(f => `
+            <div class="admin-row">
+              <img class="admin-thumb" src="${escapeHTML(f.photo_url || "")}" alt="">
+              <div class="admin-row-main">
+                <strong>${escapeHTML(f.name)}</strong>
+                <small>${escapeHTML(f.place || "Place not added")} · DOB: ${dateFmt(f.dob)}</small>
+                <small>${f.is_visible ? "Visible in slideshow" : "Hidden / awaiting approval"}</small>
+              </div>
+              <button class="btn btn-sm btn-neutral" data-friend-toggle="${f.id}" data-value="${f.is_visible}">${f.is_visible ? "Hide" : "Approve & show"}</button>
+              <button class="btn btn-sm btn-danger" data-friend-delete="${f.id}">Delete</button>
+            </div>
+          `).join("") : '<div class="empty-state">No friends added yet.</div>'}
+        </div>
+      </div>
+    `;
+    const friendForm = $("friend-form");
+    if (friendForm) friendForm.onsubmit = addFriend;
+    root.querySelectorAll("[data-friend-toggle]").forEach(b =>
+      b.onclick = () => toggleFriendVisibility(b.dataset.friendToggle, b.dataset.value !== "true")
+    );
+    root.querySelectorAll("[data-friend-delete]").forEach(b =>
+      b.onclick = () => deleteFriend(b.dataset.friendDelete)
+    );
   } else {
     root.innerHTML = allProfiles.map(p => `
       <div class="admin-row">
@@ -936,6 +631,128 @@ function renderAdminTab() {
   root.querySelectorAll("[data-member-revoke]").forEach(b =>
     b.onclick = () => removeMember(b.dataset.memberRevoke)
   );
+}
+
+
+/* FRIENDS MANAGEMENT + APPROVED SLIDESHOW */
+async function loadVisibleFriends() {
+  const slider = document.querySelector(".friends-slider");
+  if (!slider || !user || !profile?.is_approved) return;
+
+  const { data, error } = await sb.from("friends")
+    .select("id,name,place,dob,photo_url,is_visible")
+    .eq("is_visible", true)
+    .order("created_at", { ascending: false });
+
+  if (error) {
+    console.warn("Friends slideshow could not load:", error);
+    slider.innerHTML = '<div class="empty-state">Friends slideshow could not be loaded.</div>';
+    return;
+  }
+
+  const friends = data || [];
+  slider.innerHTML = friends.length ? friends.map(f => `
+    <article class="friend-card">
+      <img src="${escapeHTML(f.photo_url || "")}" alt="${escapeHTML(f.name)}" loading="lazy">
+      <h3>${escapeHTML(f.name)}</h3>
+      <p>${escapeHTML(f.place || "Place not added")}</p>
+      <small>DOB: ${dateFmt(f.dob)}</small>
+    </article>
+  `).join("") : '<div class="empty-state">Approved friends will appear here ❤️</div>';
+}
+
+async function loadFriendsAdmin() {
+  const { data, error } = await sb.from("friends")
+    .select("*")
+    .order("created_at", { ascending: false });
+
+  if (error) {
+    console.error("Friends load error:", error);
+    $("admin-content").innerHTML = `<div class="empty-state">Could not load friends: ${escapeHTML(error.message)}</div>`;
+    return;
+  }
+  allFriends = data || [];
+  renderAdminTab();
+}
+
+async function addFriend(e) {
+  e.preventDefault();
+  if (!profile?.is_admin) return toast("Admin access required.");
+
+  const name = $("friend-name").value.trim();
+  const place = $("friend-place").value.trim();
+  const dob = $("friend-dob").value || null;
+  const file = $("friend-photo").files[0];
+  const message = $("friend-message");
+  const submit = $("friend-form").querySelector('button[type="submit"]') ||
+                 $("friend-form").querySelector("button");
+  if (!name || !file) return;
+  if (!file.type.startsWith("image/")) {
+    message.textContent = "Please choose an image file.";
+    return;
+  }
+  if (file.size > 10 * 1024 * 1024) {
+    message.textContent = "Photo must be 10 MB or smaller.";
+    return;
+  }
+
+  submit.disabled = true;
+  message.textContent = "Uploading photo…";
+  const safeName = file.name.replace(/[^\w.\-]/g, "_");
+  const path = `${user.id}/friends/${Date.now()}-${safeName}`;
+
+  try {
+    const { error: uploadError } = await sb.storage.from("journey-media")
+      .upload(path, file, { upsert: false });
+    if (uploadError) throw uploadError;
+
+    const { data: urlData } = sb.storage.from("journey-media").getPublicUrl(path);
+    const { error: insertError } = await sb.from("friends").insert({
+      name, place, dob,
+      photo_url: urlData.publicUrl,
+      photo_path: path,
+      is_visible: false
+    });
+    if (insertError) {
+      await sb.storage.from("journey-media").remove([path]);
+      throw insertError;
+    }
+
+    toast("Friend added. Approve to show in slideshow.");
+    await loadFriendsAdmin();
+  } catch (err) {
+    console.error("Add friend error:", err);
+    message.textContent = err.message || "Could not add friend.";
+  } finally {
+    if (submit) submit.disabled = false;
+  }
+}
+
+async function toggleFriendVisibility(id, visible) {
+  const { error } = await sb.from("friends")
+    .update({ is_visible: visible })
+    .eq("id", id);
+  if (error) return toast("Friend update failed: " + error.message);
+  toast(visible ? "Friend approved for slideshow." : "Friend hidden.");
+  await loadFriendsAdmin();
+  await loadVisibleFriends();
+}
+
+async function deleteFriend(id) {
+  const friend = allFriends.find(f => f.id === id);
+  if (!friend) return;
+  if (!confirm(`Delete ${friend.name}'s profile?`)) return;
+
+  const { error } = await sb.from("friends").delete().eq("id", id);
+  if (error) return toast("Delete failed: " + error.message);
+
+  if (friend.photo_path) {
+    const { error: storageError } = await sb.storage.from("journey-media").remove([friend.photo_path]);
+    if (storageError) console.warn("Photo file could not be removed:", storageError);
+  }
+  toast("Friend profile deleted.");
+  await loadFriendsAdmin();
+  await loadVisibleFriends();
 }
 
 async function changeMemory(id, status) {
