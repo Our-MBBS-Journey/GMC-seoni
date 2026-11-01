@@ -406,3 +406,100 @@
     font-size: 13px;
   }
 }
+/* ===== PREMIUM MBBS JOURNEY LOGIN ===== */
+
+#auth-view {
+  min-height: 100vh;
+  background: linear-gradient(145deg, #10131D, #171A24, #080A10);
+  padding: 30px 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+#auth-view .hero-copy {
+  text-align: center;
+  margin-bottom: 30px;
+}
+
+#auth-view .hero-copy h1 {
+  color: #D5AD69;
+  font-size: clamp(28px, 6vw, 44px);
+  font-weight: 800;
+  letter-spacing: 1px;
+  line-height: 1.3;
+  text-shadow: 0 3px 20px rgba(213, 173, 105, 0.2);
+}
+
+#auth-view .hero-copy p {
+  color: #F5E8CE;
+  font-size: 15px;
+  line-height: 1.8;
+  max-width: 480px;
+  margin: 12px auto;
+}
+
+#auth-view .auth-card {
+  background: rgba(23, 26, 36, 0.95);
+  border: 1px solid rgba(213, 173, 105, 0.3);
+  border-radius: 22px;
+  padding: 28px 22px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.4);
+  backdrop-filter: blur(12px);
+}
+
+#auth-view label {
+  color: #F5E8CE;
+}
+
+#auth-view input {
+  background: #10131D;
+  color: #F5E8CE;
+  border: 1px solid #373746;
+  border-radius: 12px;
+  padding: 13px;
+}
+
+#auth-view input:focus {
+  border-color: #D5AD69;
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(213, 173, 105, 0.12);
+}
+
+#auth-view button {
+  border-radius: 12px;
+  transition: all 0.25s ease;
+}
+
+#auth-view .btn-primary {
+  background: linear-gradient(135deg, #D5AD69, #B68A43);
+  color: #10131D;
+  font-weight: 800;
+  border: none;
+}
+
+#auth-view .btn-primary:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 22px rgba(213, 173, 105, 0.25);
+}
+
+#auth-view .auth-switch,
+#auth-view .muted {
+  color: #B8B6C5;
+}
+
+@media (max-width: 600px) {
+  #auth-view {
+    padding: 24px 14px;
+    align-items: flex-start;
+  }
+
+  #auth-view .hero-copy h1 {
+    font-size: 30px;
+  }
+
+  #auth-view .auth-card {
+    padding: 22px 17px;
+    border-radius: 18px;
+  }
+}
