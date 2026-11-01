@@ -434,10 +434,10 @@
   inset: 0;
   display: flex;
   flex-direction: column;
-  align-items: bottom;
-  justify-content: bottom;
-  text-align: bottom;
-  padding: 20px;
+  align-items: centre;
+  justify-content: centre;
+  text-align: centre;
+  padding: 10px;
   background: linear-gradient(
     to bottom,
     rgba(10, 12, 20, 0.15),
